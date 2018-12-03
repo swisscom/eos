@@ -1,0 +1,371 @@
+/***************************************************************************************
+Copyright (c) 2015, Swisscom (Switzerland) Ltd.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of the Swisscom nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Architecture and development:
+Vladimir Maksovic <Vladimir.Maksovic@swisscom.com>
+Milenko Boric Herget <Milenko.BoricHerget@swisscom.com>
+Dario Vieceli <Dario.Vieceli@swisscom.com>
+***************************************************************************************/
+
+
+#include "source_factory.h"
+#include "eos_types.h"
+#include "eos_macro.h"
+#include "osi_time.h"
+#include "osi_memory.h"
+#include "eos_error.h"
+#define MODULE_NAME "source:dummy"
+#include "util_log.h"
+
+#include <string.h>
+
+#define SOURCE_DUMMY_NAME "dummy"
+#define FILE_TS_URI_PREFIX "dummy://"
+
+typedef struct source_dummy_handle
+{
+	bool original;
+	uint64_t product_id;
+} source_dummy_handle_t;
+
+static eos_error_t source_dummy_init (source_t* source);
+static eos_error_t source_dummy_deinit (source_t* source);
+
+static const char* source_dummy_name (void);
+static eos_error_t source_dummy_probe (char* uri);
+static eos_error_t source_dummy_prelock (source_t* source, char* uri);
+static eos_error_t source_dummy_lock (source_t* source, char* uri,
+		char* extras, link_ev_hnd_t event_cb, void* event_cookie);
+static eos_error_t source_dummy_resume (source_t* source);
+static eos_error_t source_dummy_unlock (source_t* source);
+static eos_error_t source_dummy_suspend (source_t* source);
+static eos_error_t source_dummy_flush_buffers (source_t* source);
+static eos_error_t source_dummy_get_output_type (source_t* source,
+		link_io_type_t* type);
+static eos_error_t source_dummy_get_capabilities (source_t* source,
+		uint64_t* capabilities);
+static eos_error_t source_dummy_get_ctrl_funcs (link_handle_t link,
+		link_cap_t cap, void** ctrl_funcs);
+static eos_error_t source_dummy_assign_output (source_t* source,
+		link_io_t* next_link_io);
+
+
+static eos_error_t source_dummy_manufacture (source_t* model,
+		uint64_t model_id, source_t** product, uint64_t product_id);
+static eos_error_t source_dummy_dismantle (uint64_t model_id,
+		source_t** product);
+
+static source_t source_dummy_model =
+{
+	.handle = NULL,
+
+	.name = source_dummy_name,
+	.probe = source_dummy_probe,
+	.prelock = source_dummy_prelock,
+	.lock = source_dummy_lock,
+	.resume = source_dummy_resume,
+	.unlock = source_dummy_unlock,
+	.suspend = source_dummy_suspend,
+	.get_output_type = source_dummy_get_output_type,
+	.get_capabilities = source_dummy_get_capabilities,
+	.flush_buffers = source_dummy_flush_buffers,
+	.get_ctrl_funcs = source_dummy_get_ctrl_funcs,
+	.assign_output = source_dummy_assign_output
+};
+
+static uint64_t source_dummy_model_id = 0LL;
+
+static const char* source_dummy_name (void)
+{
+	return SOURCE_NAME;
+}
+
+CALL_ON_LOAD(source_dummy_register)
+static void source_dummy_register(void)
+{
+	osi_time_t timestamp = {0, 0};
+
+	source_dummy_init(&source_dummy_model);
+
+	if (source_dummy_model_id == 0LL)
+	{
+		osi_time_usleep(4000); // Add randomnes to model_id
+		osi_time_get_timestamp(&timestamp);
+		source_dummy_model_id = (timestamp.sec) * 1000000000LL +
+				timestamp.nsec / 1;
+	}
+
+	source_factory_register_model(&source_dummy_model,
+			&source_dummy_model_id, source_dummy_manufacture,
+			source_dummy_dismantle);
+}
+
+CALL_ON_UNLOAD(source_dummy_unregister)
+static void source_dummy_unregister(void)
+{
+	source_factory_unregister_model(&source_dummy_model,
+			source_dummy_model_id);
+	source_dummy_deinit(&source_dummy_model);
+}
+
+static eos_error_t source_dummy_init (source_t* source)
+{
+	source_dummy_handle_t *handle = NULL;
+
+	UTIL_GLOGI("Init ...");
+
+	if (source == NULL)
+	{
+		UTIL_GLOGE("Invalid argument");
+		UTIL_GLOGE("Init [Failure]");
+		return EOS_ERROR_INVAL;
+	}
+
+	handle = (source_dummy_handle_t*)
+			osi_calloc(sizeof(source_dummy_handle_t));
+	if (handle == NULL)
+	{
+		UTIL_GLOGE("Memory allocation failed");
+		UTIL_GLOGE("Init [Failure]");
+		return EOS_ERROR_NOMEM;
+	}
+
+	handle->original = true;
+	handle->product_id = SOURCE_FACTORY_INV_PRODUCT_ID;
+	source->handle = (source_handle_t)handle;
+	UTIL_GLOGI("Init [Success]");
+
+	return EOS_ERROR_OK;
+}
+
+static eos_error_t source_dummy_deinit (source_t* source)
+{
+	source_dummy_handle_t *handle = NULL;
+
+	UTIL_GLOGI("Deinit ...");
+
+	if (source == NULL)
+	{
+		UTIL_GLOGE("Invalid argument");
+		UTIL_GLOGE("Deinit [Failure]");
+		return EOS_ERROR_INVAL;
+	}
+
+	if (source->handle == NULL)
+	{
+		UTIL_GLOGE("Source is not initialized");
+		UTIL_GLOGE("Deinit [Failure]");
+		return EOS_ERROR_INVAL;
+	}
+
+	handle = (source_dummy_handle_t*)source->handle;
+
+	osi_free((void**)&handle);
+	handle = NULL;
+
+	UTIL_GLOGI("Deinit [Success]");
+	return EOS_ERROR_OK;
+}
+
+static eos_error_t source_dummy_probe (char* uri)
+{
+	if (uri == NULL)
+	{
+		return EOS_ERROR_INVAL;
+	}
+	if (strstr(uri, FILE_TS_URI_PREFIX) == uri)
+	{
+		return EOS_ERROR_OK;
+	}
+	return EOS_ERROR_GENERAL;
+}
+
+static eos_error_t source_dummy_prelock (source_t* source, char* uri)
+{
+	EOS_UNUSED(source)
+	EOS_UNUSED(uri)
+	return EOS_ERROR_NIMPLEMENTED;
+}
+
+static eos_error_t source_dummy_lock (source_t* source, char* uri,
+		char* extras, link_ev_hnd_t event_cb, void* event_cookie)
+{
+	EOS_UNUSED(source)
+	EOS_UNUSED(uri)
+	EOS_UNUSED(extras)
+	EOS_UNUSED(event_cb)
+	EOS_UNUSED(event_cookie)
+	return EOS_ERROR_NIMPLEMENTED;
+}
+
+static eos_error_t source_dummy_resume (source_t* source)
+{
+	EOS_UNUSED(source)
+	return EOS_ERROR_NIMPLEMENTED;
+}
+
+static eos_error_t source_dummy_unlock (source_t* source)
+{
+	EOS_UNUSED(source)
+	return EOS_ERROR_NIMPLEMENTED;
+}
+
+static eos_error_t source_dummy_suspend (source_t* source)
+{
+	EOS_UNUSED(source)
+	return EOS_ERROR_NIMPLEMENTED;
+}
+
+static eos_error_t source_dummy_flush_buffers (source_t* source)
+{
+	EOS_UNUSED(source)
+	return EOS_ERROR_NIMPLEMENTED;
+}
+
+static eos_error_t source_dummy_get_output_type (source_t* source,
+		link_io_type_t* type)
+{
+	EOS_UNUSED(source)
+	EOS_UNUSED(type)
+	return EOS_ERROR_NIMPLEMENTED;
+}
+
+static eos_error_t source_dummy_get_capabilities (source_t* source,
+		uint64_t* capabilities)
+{
+	EOS_UNUSED(source)
+	EOS_UNUSED(capabilities)
+	return EOS_ERROR_NIMPLEMENTED;
+}
+
+static eos_error_t source_dummy_get_ctrl_funcs (link_handle_t link,
+		link_cap_t cap, void** ctrl_funcs)
+{
+	EOS_UNUSED(link)
+	EOS_UNUSED(cap)
+	EOS_UNUSED(ctrl_funcs)
+	return EOS_ERROR_NIMPLEMENTED;
+}
+
+static eos_error_t source_dummy_assign_output (source_t* source,
+		link_io_t* next_link_io)
+{
+	EOS_UNUSED(source)
+	EOS_UNUSED(next_link_io)
+	return EOS_ERROR_NIMPLEMENTED;
+}
+
+static eos_error_t source_dummy_manufacture (source_t* model,
+		uint64_t model_id, source_t** product, uint64_t product_id)
+{
+	source_dummy_handle_t *handle = NULL;
+
+	UTIL_GLOGI("Manufacture ...");
+	if ((product == NULL) || (model == NULL) ||
+			(source_dummy_model_id != model_id) ||
+			(product_id == SOURCE_FACTORY_INV_PRODUCT_ID))
+	{
+		UTIL_GLOGE("Invalid argument");
+		UTIL_GLOGE("Manufacture [Failure]");
+		return EOS_ERROR_INVAL;
+	}
+
+	if (*product != NULL)
+	{
+		UTIL_GLOGW("Passing initialized argument");
+	}
+
+	if (model->handle == NULL)
+	{
+		UTIL_GLOGE("Model is not set up properly");
+		UTIL_GLOGE("Manufacture [Failure]");
+		return EOS_ERROR_INVAL;
+	}
+	UTIL_GLOGD("Manufacturing product (ID:0x%llX)", product_id);
+	handle = (source_dummy_handle_t*)osi_calloc(sizeof(source_dummy_handle_t));
+	if (handle == NULL)
+	{
+		UTIL_GLOGE("Memory allocation failed");
+		UTIL_GLOGE("Manufacture [Failure]");
+		return EOS_ERROR_NOMEM;
+	}
+
+	*product = (source_t*)osi_calloc(sizeof(source_t));
+	if (*product == NULL)
+	{
+		UTIL_GLOGE("Memory allocation failed");
+		UTIL_GLOGE("Manufacture [Failure]");
+		osi_free((void**)&handle);
+		return EOS_ERROR_NOMEM;
+	}
+
+	osi_memcpy(*product, model, sizeof(source_t));
+	osi_memcpy(handle, model->handle, sizeof(source_dummy_handle_t));
+	handle->original = false;
+	handle->product_id = product_id;
+	(*product)->handle = (source_handle_t)handle;
+
+	UTIL_GLOGI("Manufacture [Success]");
+
+	return EOS_ERROR_OK;
+}
+
+static eos_error_t source_dummy_dismantle (uint64_t model_id, source_t** product)
+{
+	source_dummy_handle_t *handle = NULL;
+
+	UTIL_GLOGI("Dismantle ...");
+	if ((product == NULL) || (source_dummy_model_id != model_id))
+	{
+		UTIL_GLOGE("Invalid argument");
+		UTIL_GLOGE("Dismantle [Failure]");
+		return EOS_ERROR_INVAL;
+	}
+
+	if (*product == NULL)
+	{
+		UTIL_GLOGE("Invalid argument");
+		UTIL_GLOGE("Dismantle [Failure]");
+		return EOS_ERROR_INVAL;
+	}
+
+	handle = (source_dummy_handle_t*)(*product)->handle;
+	EOS_ASSERT(handle != NULL)
+	if (handle == NULL)
+	{
+		UTIL_GLOGE("Source is not initialized");
+		UTIL_GLOGE("Dismantle [Failure]");
+		return EOS_ERROR_INVAL;
+	}
+
+	osi_free((void**)&(*product)->handle);
+	handle = NULL;
+	osi_free((void**)product);
+
+	UTIL_GLOGI("Dismantle [Success]");
+	return EOS_ERROR_OK;
+}
+

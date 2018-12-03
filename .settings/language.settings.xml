@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project>
+	<configuration id="preference.org.eclipse.cdt.managedbuilder.core.configurationDataProvider.1375205869" name="Preference Configuration">
+		<extension point="org.eclipse.cdt.core.LanguageSettingsProvider">
+			<provider class="org.eclipse.cdt.core.language.settings.providers.LanguageSettingsGenericProvider" id="org.eclipse.cdt.ui.UserLanguageSettingsProvider" name="CDT User Setting Entries" prefer-non-shared="true" store-entries-with-project="true">
+				<language id="org.eclipse.cdt.core.gcc">
+					<resource project-relative-path="">
+						<entry kind="includePath" name="/iptv/sources/media_source/interface">
+							<flag value="LOCAL|VALUE_WORKSPACE_PATH|RESOLVED"/>
+						</entry>
+					</resource>
+				</language>
+				<language id="org.eclipse.cdt.core.g++">
+					<resource project-relative-path="">
+						<entry kind="includePath" name="/iptv/sources/ts_parser/interface">
+							<flag value="LOCAL|VALUE_WORKSPACE_PATH|RESOLVED|EXPORTED"/>
+						</entry>
+						<entry kind="includePath" name="/iptv/sources/drm/impl">
+							<flag value="LOCAL|VALUE_WORKSPACE_PATH|RESOLVED|EXPORTED"/>
+						</entry>
+						<entry kind="includePath" name="/iptv/sources/drm/interface">
+							<flag value="LOCAL|VALUE_WORKSPACE_PATH|RESOLVED|EXPORTED"/>
+						</entry>
+						<entry kind="includePath" name="/iptv/sources/iptv/interface">
+							<flag value="LOCAL|VALUE_WORKSPACE_PATH|RESOLVED|EXPORTED"/>
+						</entry>
+						<entry kind="includePath" name="/iptv/sources/media_pipeline/interface">
+							<flag value="LOCAL|VALUE_WORKSPACE_PATH|RESOLVED|EXPORTED"/>
+						</entry>
+						<entry kind="includePath" name="/iptv/sources/media_plug/interface">
+							<flag value="LOCAL|VALUE_WORKSPACE_PATH|RESOLVED|EXPORTED"/>
+						</entry>
+						<entry kind="includePath" name="/iptv/sources/media_source/interface">
+							<flag value="LOCAL|VALUE_WORKSPACE_PATH|RESOLVED|EXPORTED"/>
+						</entry>
+						<entry kind="macro" name="__GXX_EXPERIMENTAL_CXX0X__" value="">
+							<flag value="BUILTIN|EXPORTED"/>
+						</entry>
+						<entry kind="macro" name="__cplusplus" value="201103L">
+							<flag value="BUILTIN|EXPORTED"/>
+						</entry>
+					</resource>
+				</language>
+			</provider>
+			<provider-reference id="org.eclipse.cdt.core.ReferencedProjectsLanguageSettingsProvider" ref="shared-provider"/>
+			<provider-reference id="org.eclipse.cdt.managedbuilder.core.MBSLanguageSettingsProvider" ref="shared-provider"/>
+			<provider-reference id="org.eclipse.cdt.managedbuilder.core.GCCBuiltinSpecsDetector" ref="shared-provider"/>
+			<provider copy-of="extension" id="org.eclipse.cdt.managedbuilder.core.GCCBuildCommandParser"/>
+		</extension>
+	</configuration>
+</project>
