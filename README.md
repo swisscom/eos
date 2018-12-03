@@ -23,10 +23,12 @@ It contains only dummy player which is just consuming the data and not really pl
 
 As Android.mk is already prepared, just place the source code in the AOSP source three and run 'mm'.
 To enable it in full build, please add three packages to your product make file:
-PRODUCT_PACKAGES += \
-    libeos \
-    libeos_jni \
-    eos_cmd
+**For example in device.mk**
+
+	PRODUCT_PACKAGES += \
+	    libeos \
+	    libeos_jni \
+	    eos_cmd
 
 ## Running test app
 Just run eos_test from bin directory on Linux or on the platform and you will enter internal test app command line interface.
